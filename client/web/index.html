@@ -327,6 +327,23 @@
   .pass .eye-off, .pass.shown .eye { display: none; }
   .pass.shown .eye-off { display: block; }
 
+  /* Unleashlive stream card */
+  .ul-state { float: right; text-transform: none; letter-spacing: 0; font-weight: 600; }
+  .ul-state.ok { color: var(--ok, #2e9d5b); } .ul-state.warn { color: var(--warn, #c98a00); } .ul-state.bad { color: var(--danger); }
+  .ul-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .ul-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5em, 1fr)); gap: 6px 12px; margin: 10px 0 4px; color: var(--muted); }
+  .ul-checks label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .ul-checks input { accent-color: var(--accent); margin: 0; }
+  .ul-more { margin-top: 6px; color: var(--muted); }
+  .ul-more summary { cursor: pointer; font-size: 12px; margin-bottom: 8px; }
+  .ul-rows { margin-top: 2px; }
+  .ul-rows dd { overflow-wrap: anywhere; }
+  .ul-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .ul-log { max-height: 180px; overflow: auto; margin: 10px 0 0; padding: 8px; font-size: 11px; background: var(--surface-2);
+            border: 1px solid var(--border-2); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ul-hint { margin: 10px 0 0; color: var(--faint); font-size: 11.5px; }
+  .ul-hint a { color: inherit; }
+
   /* tabs */
   .tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface);
           border: 1px solid var(--border); }
@@ -671,6 +688,50 @@
         <dt>Voltage</dt><dd id="bVolt">—</dd>
         <dt>Temperature</dt><dd id="bTemp">—</dd>
       </dl>
+    </div>
+
+    <div class="card" id="ulCard">
+      <h3>Unleashlive stream <span class="ul-state" id="ulState"></span></h3>
+      <p class="ul-note" id="ulNote" hidden></p>
+      <div class="ul-form" id="ulForm">
+        <div class="field"><label for="ulUrl">Stream URL</label>
+          <div class="pass"><input type="password" id="ulUrl" autocomplete="off" spellcheck="false"
+                 placeholder="rtmp://stream.unleashlive.com/rtmp/W…?token=…">
+            <button type="button" class="icon-btn" id="ulShow" aria-pressed="false" aria-label="Show the URL" title="Show the URL">
+            <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A9.6 9.6 0 0 1 12 5c6.4 0 10 7 10 7a17.4 17.4 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+            </button></div></div>
+        <div class="field"><label for="ulName">Name</label><input type="text" id="ulName" placeholder="Osmo (optional)"></div>
+        <div class="ul-checks">
+          <label title="Restart the stream after any exit (the camera dropping, a clean ffmpeg exit), until you stop it"><input type="checkbox" id="ulContinuous" checked> Continuous</label>
+          <label title="Have unleash-stream-cli re-encode the video. Off: the camera's H.264 is copied as it is. H.265 cameras are re-encoded for RTMP anyway"><input type="checkbox" id="ulEncode"> Re-encode</label>
+          <label title="Publish with WebRTC (WHIP) instead of RTMP: lower latency, always re-encoded"><input type="checkbox" id="ulWebrtc"> WebRTC</label>
+          <label title="Keep the stream for playback on Unleashlive"><input type="checkbox" id="ulPlayback" checked> Playback</label>
+          <label title="Have the device's AI app analyse the stream on Unleashlive"><input type="checkbox" id="ulAutomated"> AI analysis</label>
+          <label title="Remember the URL, token included, in this browser"><input type="checkbox" id="ulRemember"> Remember URL</label>
+        </div>
+        <details class="ul-more"><summary>More</summary>
+          <div class="field"><label for="ulDevice">Device ID</label><input type="text" id="ulDevice" placeholder="W… (instead of the URL)" spellcheck="false"></div>
+          <div class="field"><label for="ulToken">Token</label><input type="password" id="ulToken" placeholder="with the device ID" autocomplete="off"></div>
+          <div class="field"><label for="ulTimeout">Timeout (s)</label><input type="text" id="ulTimeout" inputmode="numeric" placeholder="30"></div>
+          <div class="field"><label for="ulRetries">Max retries</label><input type="text" id="ulRetries" inputmode="numeric" placeholder="unlimited"></div>
+        </details>
+      </div>
+      <dl class="rows ul-rows" id="ulRows" hidden>
+        <dt>To</dt><dd id="ulDest">—</dd>
+        <dt>Video</dt><dd id="ulVideo">—</dd>
+        <dt>Retries</dt><dd id="ulRetry">—</dd>
+        <dt>For</dt><dd id="ulFor">—</dd>
+      </dl>
+      <div class="ul-actions">
+        <button class="btn primary" id="ulStart">Start streaming</button>
+        <button class="btn" id="ulStop" hidden>Stop</button>
+        <button class="btn" id="ulLogBtn" hidden>Log</button>
+      </div>
+      <pre class="ul-log" id="ulLog" hidden></pre>
+      <p class="ul-hint" id="ulLiveHint" hidden>Live view from the camera: <b id="ulLive"></b>. That is what gets
+        streamed; the Format card is what the camera records.</p>
+      <p class="ul-hint">Sends the camera's own video, not re-encoded, with <a href="https://developer.unleashlive.com/stream-cli/" target="_blank" rel="noopener">unleash-stream-cli</a> <span id="ulVersion"></span>. Players can open <a id="ulSrc" href="/live.ts">/live.ts</a>.</p>
     </div>
 
     <div class="card">
@@ -2212,12 +2273,106 @@ $('lightbox').onclick = e => { if (e.target === $('lightbox')) closeViewer(); };
 $('lbDownload').onclick = () => { if (lbFile) download([lbFile]); closeViewer(); };
 document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('lightbox').hidden) closeViewer(); else if (!$('camPanel').hidden) closeCams(); });
 
+// ---- Unleashlive stream (unleash-stream-cli) ----
+const UL_KEY = 'osmo.unleash';
+const UL_FIELDS = { ulName: 'name', ulDevice: 'device', ulTimeout: 'timeout', ulRetries: 'max_retries' };
+const UL_CHECKS = { ulContinuous: 'continuous', ulEncode: 'encode', ulWebrtc: 'webrtc', ulPlayback: 'playback', ulAutomated: 'automated', ulRemember: 'remember' };
+function ulLoad() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(UL_KEY) || '{}'); } catch (e) {}
+  for (const [id, key] of Object.entries(UL_FIELDS)) if (saved[key] != null) $(id).value = saved[key];
+  for (const [id, key] of Object.entries(UL_CHECKS)) if (saved[key] != null) $(id).checked = !!saved[key];
+  if (saved.remember && saved.url) $('ulUrl').value = saved.url;
+}
+function ulSave() {
+  const keep = {};
+  for (const [id, key] of Object.entries(UL_FIELDS)) keep[key] = $(id).value;
+  for (const [id, key] of Object.entries(UL_CHECKS)) keep[key] = $(id).checked;
+  if ($('ulRemember').checked) keep.url = $('ulUrl').value.trim();   // the token is in it: only when asked
+  try { localStorage.setItem(UL_KEY, JSON.stringify(keep)); } catch (e) {}
+}
+ulLoad();
+$('ulShow').onclick = () => {
+  const show = $('ulUrl').type === 'password';
+  $('ulUrl').type = show ? 'text' : 'password';
+  $('ulShow').closest('.pass').classList.toggle('shown', show);
+  $('ulShow').setAttribute('aria-pressed', String(show));
+};
+$('ulStart').onclick = async () => {
+  const body = { url: $('ulUrl').value.trim(), device: $('ulDevice').value.trim(), token: $('ulToken').value.trim(),
+                 name: $('ulName').value.trim() || ('Osmo ' + ((S && S.active && S.active.name) || '')).trim(),
+                 continuous: $('ulContinuous').checked, encode: $('ulEncode').checked, webrtc: $('ulWebrtc').checked,
+                 playback: $('ulPlayback').checked, automated: $('ulAutomated').checked,
+                 timeout: $('ulTimeout').value.trim(), max_retries: $('ulRetries').value.trim() };
+  ulSave();
+  const btn = $('ulStart');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  try {
+    const r = await (await fetch('/api/unleash/start', { method: 'POST', body: JSON.stringify(body) })).json();
+    if (!r.ok) toast(r.error || 'Could not start the stream', true);
+  } catch (e) { toast('Could not start the stream', true); }
+  btn.disabled = false; btn.textContent = 'Start streaming';
+};
+$('ulStop').onclick = async () => {
+  $('ulStop').disabled = true;
+  try { await fetch('/api/unleash/stop', { method: 'POST' }); } catch (e) {}
+  $('ulStop').disabled = false;
+  $('ulLog').hidden = true;
+};
+$('ulLogBtn').onclick = async () => {
+  const pre = $('ulLog');
+  if (!pre.hidden) { pre.hidden = true; return; }
+  try { pre.textContent = await (await fetch('/api/unleash/log', { cache: 'no-store' })).text() || 'No log yet.'; }
+  catch (e) { pre.textContent = 'Could not read the log.'; }
+  pre.hidden = false;
+  pre.scrollTop = pre.scrollHeight;
+};
+const UL_STATES = { idle: ['', ''], waiting: ['Waiting for video', 'warn'], starting: ['Starting', 'warn'],
+                    running: ['Live', 'ok'], stopped: ['Stopped', 'warn'], failed: ['Retrying', 'bad'],
+                    unknown: ['Unknown', 'warn'], error: ['Error', 'bad'] };
+function renderUnleash() {
+  const u = S && S.unleash;
+  if (!u) return;
+  const active = u.state !== 'idle';
+  const [label, tone] = UL_STATES[u.state] || [u.state, 'warn'];
+  $('ulState').textContent = label;
+  $('ulState').className = 'ul-state ' + tone;
+  $('ulNote').hidden = !(u.supported || u.error);
+  $('ulNote').textContent = u.supported || u.error || '';
+  $('ulForm').hidden = active;
+  $('ulRows').hidden = !active;
+  $('ulStart').hidden = active;
+  $('ulStart').disabled = !!u.supported;
+  $('ulStop').hidden = $('ulLogBtn').hidden = !active;
+  $('ulVersion').textContent = u.version ? '(' + u.version + ')' : '';
+  const lv = S.live || {};
+  $('ulLiveHint').hidden = !lv.size;
+  $('ulLive').textContent = [lv.codec, lv.size, lv.fps ? lv.fps + ' fps' : ''].filter(Boolean).join(' · ');
+  $('ulSrc').textContent = '/live.ts';
+  if (active) {
+    $('ulDest').textContent = (u.name ? u.name + ' · ' : '') + (u.destination || '—');
+    const l = S.live || {};
+    const what = [l.codec, l.size, l.kbps ? (l.kbps / 1000).toFixed(1) + ' Mbit/s' : '', l.fps ? l.fps + ' fps' : '']
+      .filter(Boolean).join(' · ') || '—';
+    $('ulVideo').textContent = what + (u.encode ? ', re-encoded by stream-cli' : ', copied');
+    $('ulVideo').title = "The camera's live view, which is what gets streamed. The Format card is what the camera records.";
+    $('ulRetry').textContent = u.retries == null ? '—' : u.retries + (u.continuous ? ' · continuous' : '');
+    $('ulFor').textContent = u.since ? fmtSince(u.since) : '—';
+  }
+}
+function fmtSince(t) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - t));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, r = s % 60;
+  return (h ? h + ' h ' : '') + (h || m ? m + ' min ' : '') + (h ? '' : r + ' s');
+}
+
 async function poll() {
   try {
     S = await (await fetch('/api/status', { cache: 'no-store' })).json();
     track(S);
   } catch (e) { S = null; }
   render();
+  renderUnleash();
   setTimeout(poll, 300);
 }
 poll();

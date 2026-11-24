@@ -23,8 +23,10 @@ from camlink.util import data_dir, log
 
 from .downloads import Downloader, default_download_dir
 from .library import MediaCache
+from .livets import LiveTap
 from .multiview import MAX_EXTRA, Tile
 from .state import CameraState
+from .unleash import StreamCli
 
 
 # Thumbnails narrower than this (the Osmo Pocket 3 keeps 90 × 90 ones) are made from the camera's larger
@@ -75,6 +77,9 @@ class App:
         self.state = CameraState()
         self.latest_frame = None              # av.VideoFrame for the live view stream
         self.vcam = None                      # camlink.vcam.VirtualCamera (--vcam): the live view as a webcam
+        self.livets = LiveTap()                # the camera's own video for /live.h264 and /live.ts
+        self.unleash = StreamCli(8091, lambda: self.livets.codec,   # Unleashlive via unleash-stream-cli
+                                 lambda: time.monotonic() - self.livets.last_keyframe < 10)
         self.frame_seq = 0
         self.last_frame = 0.0
         self.frame_cond = threading.Condition()
@@ -129,6 +134,7 @@ class App:
         self.state_camera: str | None = None   # camera the state and gallery shown belong to
         self.tiles: dict[str, Tile] = {}       # Multiview: extra cameras, by address
         self.tap = None                        # sees every camera message (the camera report)
+        self.debug_api = False                 # --debug-api: POST /api/debug/command sends raw commands
 
     # ---- incoming data -------------------------------------------------------------------------
     def on_frame(self, frame, _first_packet: float = 0.0) -> None:
@@ -656,6 +662,10 @@ class App:
         snap["link"] = self.link
         snap["recovery"] = self.recovery
         snap["vcam"] = self.vcam.device if self.vcam is not None and self.vcam.active else None
+        snap["live"] = self.livets.snapshot()
+        frame = self.latest_frame
+        snap["live"]["size"] = f"{frame.width}x{frame.height}" if frame is not None else None
+        snap["unleash"] = self.unleash.snapshot()
         pocket = self.pocket_model()
         if snap.get("capture_mode") is not None:
             snap["capture_mode_name"] = cam.mode_name(snap["capture_mode"], pocket)

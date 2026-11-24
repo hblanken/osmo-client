@@ -273,6 +273,8 @@ The same on every system (`osmo-client.bat` on Windows, `sh osmo-client.sh` on m
                           (see "Test your camera" below)
 --vcam                    also send the live view to a virtual camera (see below)
 --vcam-device DEVICE      v4l2loopback device for --vcam on Linux, e.g. /dev/video40 (default: the first)
+--url URL                 stream the camera's original video to Unleashlive (see below; also
+                          --unleash-device, --unleash-token, --unleash-name, --unleash-webrtc, ...)
 --help                    everything else
 ```
 
@@ -298,6 +300,34 @@ picture costs nothing extra while no page shows it. `/api/status` says which dev
   pyvirtualcam library in the app's Python environment. Started with `--vcam` without it, the app prints
   the exact command; on Windows it is
   `"%LOCALAPPDATA%\osmo-pc\venv-client\Scripts\python.exe" -m pip install pyvirtualcam`.
+
+### The camera's original video, and streaming to Unleashlive
+
+The page also serves the camera's **own** live video, before it is decoded: the camera's full live view
+size and bitrate, with no re-encoding and no extra CPU.
+
+- `http://127.0.0.1:8091/live.ts`: MPEG-TS, for VLC, ffplay or OBS (Media Source, untick "Local file").
+- `http://127.0.0.1:8091/live.h264` (`/live.h265` for H.265 cameras): the raw stream.
+
+To send it to an [Unleashlive](https://cloud.unleashlive.com) device, install
+[unleash-stream-cli](https://developer.unleashlive.com/stream-cli/) (macOS and Linux; Windows through WSL):
+
+```
+curl -fsSL https://unleash-stream-cli.s3.ap-southeast-2.amazonaws.com/install.sh | bash -s -- install
+```
+
+Then paste the device's Stream URL into the **Unleashlive stream** card and press Start, or start the app
+with it:
+
+```
+sh osmo-client.sh --url 'rtmp://stream.unleashlive.com/rtmp/<device-id>?token=<token>'
+```
+
+The stream starts once the live view runs. It is copied, not re-encoded (stream-cli re-encodes H.265
+cameras for RTMP), and restarts by itself after the camera drops (continuous mode). More options:
+`--unleash-name`, `--unleash-webrtc`, `--unleash-encode`, `--unleash-no-continuous`, `--unleash-timeout`,
+`--unleash-max-retries`, `--unleash-automated`, `--unleash-no-playback`, `--unleash-keep`. Or set the
+token in `UNLEASH_TOKEN` and pass `--unleash-device`. Details: [docs/UNLEASH.md](docs/UNLEASH.md).
 
 ## Test your camera
 

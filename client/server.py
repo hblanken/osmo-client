@@ -21,9 +21,12 @@ from camlink.util import log
 
 from .app import App
 from .downloads import open_folder
+from .livets import CONTENT_TYPES as LIVE_CONTENT_TYPES
 
 PAGE_FILE = Path(__file__).resolve().parent / "web" / "index.html"
 WEB_FILES = {"/monitor.js": ("monitor.js", "text/javascript; charset=utf-8")}   # other files the page loads
+# The camera's own video (livets.py): the elementary stream as it came, or in MPEG-TS
+LIVE_PATHS = {"/live.h264": "es", "/live.h265": "es", "/live.hevc": "es", "/live.ts": "ts"}
 CONTENT_TYPES = {"LRF": "video/mp4", "MP4": "video/mp4", "THM": "image/jpeg", "JPG": "image/jpeg"}
 
 
@@ -230,6 +233,31 @@ def start_server(app: App, port: int) -> ThreadingHTTPServer:
                 self._json(app.record(True))
             elif path == "/api/record/stop":
                 self._json(app.record(False))
+            elif path == "/api/unleash/start":
+                try:
+                    body = self._body()
+                except ValueError:
+                    self._bad("bad request")
+                else:
+                    self._json(app.unleash.start(body))
+            elif path == "/api/unleash/stop":
+                self._json(app.unleash.stop())
+            elif path == "/api/debug/command" and app.debug_api:
+                # Development only (--debug-api): one raw DUML command on the current session, e.g.
+                # {"set": 9, "id": 168, "payload": "00040200000000000000", "receiver": 65}
+                try:
+                    body = self._body()
+                    cmd_set, cmd_id = int(body["set"]), int(body["id"])
+                    payload = bytes.fromhex(body.get("payload", ""))
+                    receiver = body.get("receiver")
+                    receiver = None if receiver is None else int(receiver)
+                except (ValueError, KeyError, TypeError):
+                    self._bad("set, id, payload (hex) and an optional receiver")
+                else:
+                    if receiver is None and (cmd_set, cmd_id) == (0x09, 0xA8) and app.datalink is not None:
+                        receiver = app.datalink._liveview_addr
+                    self._json(app.request(cmd_set, cmd_id, payload, timeout=float(body.get("timeout", 2.5)),
+                                           receiver=receiver))
             elif path == "/api/photo":
                 self._json(app.take_photo())
             elif path == "/api/link/on":
@@ -526,6 +554,21 @@ def start_server(app: App, port: int) -> ThreadingHTTPServer:
             elif path.startswith("/api/media/file"):
                 storage, file_path = self._file_query()
                 self._relay(storage, file_path, filename=file_path.rsplit("/", 1)[-1])
+            elif urlsplit(path).path in LIVE_PATHS:
+                fmt = LIVE_PATHS[urlsplit(path).path]
+                self.send_response(200)
+                self.send_header("Content-Type", LIVE_CONTENT_TYPES[fmt])
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                app.livets.serve(self.wfile, fmt)
+            elif path == "/api/unleash/log":
+                body = app.unleash.logs().encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             elif path.startswith("/stream/tile/"):
                 tile = app.tiles.get(unquote(urlsplit(path).path.rsplit("/", 1)[1]).upper())
                 if tile is None:

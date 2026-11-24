@@ -350,6 +350,19 @@ decoder after ~5 ms without new packets.
 The Nano's live view is 1280×720 at 30 fps (960×720 when the camera records 4:3), about 6 Mbit/s,
 without B-frames.
 
+Its size doesn't follow the recording format (1080p, 4K...). No byte of the `09/A8` payload
+(`00 04 02 00 00 00 00 00 00 00`) changes it. Tested on an Osmo Nano with the format at 1080p 16:9 30 fps
+(2026-11-24, `--debug-api`), with the picture size, bitrate and frame rate measured after each request:
+
+| byte | values | answer | effect |
+|---|---|---|---|
+| 0 (`00`) | `01`, `02` | `ee` (refused) | none |
+| 1 (`04`) | `01` | `00` | none |
+| 1 | `00`, `02`, `03` | `00` / no reply | the video stops (a new session brings it back) |
+| 1 | `05`-`08` | `ee` | none |
+| 2 (`02`) | `00`-`07` | `00` | none: 1280×720; the bitrate follows the scene whatever the value |
+| 3-9 (`00`) | `01`, `02` | `00` | none |
+
 ### 5.9 Replies
 
 A reply has flags `0x80`, the command of the request and its message sequence. The first payload byte is

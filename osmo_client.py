@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import signal
 import sys
 import threading
@@ -37,6 +38,7 @@ from client import report
 from client.app import App
 from client.server import start_server
 from client.station import back_to_own_wifi, reach
+from client.unleash import clean_config, mask
 from client.watchdog import FeedWatchdog, start_wait
 
 
@@ -57,6 +59,18 @@ async def run(args: argparse.Namespace) -> None:
     threading.Thread(target=app.settings_loop, args=(stop,), daemon=True, name="settings").start()
     threading.Thread(target=app.media_hold_loop, args=(stop,), daemon=True, name="media-hold").start()
     threading.Thread(target=app.pocket_loop, args=(stop,), daemon=True, name="pocket-controls").start()
+    app.unleash.port = args.port
+    app.debug_api = args.debug_api
+    app.unleash.keep = args.unleash_keep
+    try:
+        app.unleash.pending = unleash_config(args)
+    except ValueError as error:
+        log(f"Unleashlive: {error}")
+    threading.Thread(target=app.unleash.loop, args=(stop,), daemon=True, name="unleash").start()
+
+    def on_video(data: bytes, first_packet: float = 0.0) -> None:
+        decoder.feed(data, first_packet)
+        app.livets.feed(data, first_packet)   # the camera's own video for /live.h264 and /live.ts
     try:
         start_server(app, args.port)
     except OSError as error:
@@ -268,10 +282,11 @@ async def run(args: argparse.Namespace) -> None:
                 continue                 # disconnected or another camera picked while connecting
             app.set_stage("datalink")
             session = datalink.Datalink(port=transport.get("port", datalink.DATALINK_PORT), host=host,
-                                        on_video=decoder.feed, on_message=app.on_message,
+                                        on_video=on_video, on_message=app.on_message,
                                         liveview=models.liveview_mode((known or {}).get("model_id")),
                                         topics=cam.SUBSCRIBED_TOPICS)
             decoder.reset()
+            app.livets.reset()
             app.datalink = session
             app.state.connected = True
             task = asyncio.ensure_future(asyncio.to_thread(session.run))
@@ -361,7 +376,22 @@ async def run(args: argparse.Namespace) -> None:
                 await link.close()
         if app.vcam is not None:
             app.vcam.close()
+        await asyncio.to_thread(app.unleash.shutdown)
         log("Stopped.")
+
+
+def unleash_config(args: argparse.Namespace) -> dict | None:
+    """The Unleashlive stream asked for on the command line (--unleash-*), or None."""
+    token = args.unleash_token or os.environ.get("UNLEASH_TOKEN")
+    if not (args.unleash_url or args.unleash_device):
+        return None
+    cfg = clean_config({
+        "url": args.unleash_url, "device": args.unleash_device, "token": token, "name": args.unleash_name,
+        "continuous": not args.unleash_no_continuous, "webrtc": args.unleash_webrtc, "encode": args.unleash_encode,
+        "automated": True if args.unleash_automated else None, "playback": False if args.unleash_no_playback else None,
+        "timeout": args.unleash_timeout, "max_retries": args.unleash_max_retries})
+    log(f"Unleashlive: streaming to {mask(cfg['url']) or cfg['device']} once the live view runs")
+    return cfg
 
 
 def main() -> None:
@@ -381,6 +411,30 @@ def main() -> None:
                              "(a v4l2loopback device on Linux, the OBS Virtual Camera on Windows and macOS)")
     parser.add_argument("--vcam-device", help="v4l2loopback device for --vcam, e.g. /dev/video40 (default: the "
                                               "first one)")
+    unleash = parser.add_argument_group(
+        "Unleashlive", "stream the camera's original video (not re-encoded) to an Unleashlive device with "
+                       "unleash-stream-cli (https://developer.unleashlive.com/stream-cli/); starts once the "
+                       "live view runs; also on the page")
+    unleash.add_argument("--unleash-url", "--url", metavar="URL",
+                         help="the device's Stream URL, rtmp://stream.unleashlive.com/rtmp/<device>?token=<token>")
+    unleash.add_argument("--unleash-device", metavar="ID", help="device ID (W…), instead of the URL, with --unleash-token")
+    unleash.add_argument("--unleash-token", metavar="TOKEN",
+                         help="streaming token (or set UNLEASH_TOKEN, which keeps it out of the shell history)")
+    unleash.add_argument("--unleash-name", metavar="NAME", help="name of the stream in unleash-stream-cli")
+    unleash.add_argument("--unleash-webrtc", action="store_true", help="publish with WebRTC (WHIP) instead of RTMP "
+                                                                     "(re-encoded by stream-cli)")
+    unleash.add_argument("--unleash-encode", action="store_true",
+                         help="have stream-cli re-encode (H.265 cameras are re-encoded for RTMP anyway)")
+    unleash.add_argument("--unleash-no-continuous", action="store_true",
+                         help="don't restart the stream after a clean exit (continuous is the default)")
+    unleash.add_argument("--unleash-timeout", type=int, metavar="SECS", help="connection timeout (stream-cli: 30)")
+    unleash.add_argument("--unleash-max-retries", type=int, metavar="N", help="give up after N retries "
+                                                                             "(default: never)")
+    unleash.add_argument("--unleash-automated", action="store_true",
+                         help="have the device's AI app analyse the stream on Unleashlive")
+    unleash.add_argument("--unleash-no-playback", action="store_true", help="don't keep the stream for playback")
+    unleash.add_argument("--unleash-keep", action="store_true",
+                         help="leave the stream running in stream-cli when Osmo Client quits")
     parser.add_argument("--downloads", help="folder for files copied from the camera (default: DJI Osmo in "
                                             "your Videos folder, Movies on macOS)")
     parser.add_argument("--interface", help="Wi-Fi adapter to use: 'Wi-Fi 2' on Windows, en0 on macOS, wlan0 "
@@ -389,6 +443,7 @@ def main() -> None:
     parser.add_argument("--stall", type=float, default=3.0, help="restart the session after N s without video")
     parser.add_argument("--no-delete", action="store_true", help="don't offer to delete files on the camera")
     parser.add_argument("--allow-delete", action="store_true", help=argparse.SUPPRESS)   # 1.3.0: deleting was opt-in
+    parser.add_argument("--debug-api", action="store_true", help=argparse.SUPPRESS)  # POST /api/debug/command
     parser.add_argument("--join-timeout", type=float, default=45)
     parser.add_argument("--approve-timeout", type=float, default=90)
     try:
